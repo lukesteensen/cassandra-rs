@@ -1,0 +1,4 @@
+[root]
+name = "cassandra-rs"
+version = "0.0.1"
+
