@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Header {
     pub version: Version,
     pub flags: Flags,
@@ -7,13 +7,13 @@ pub struct Header {
     pub length: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Version {
     Request,
     Response,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Flags {
     pub compression: bool,
     pub tracing: bool,
@@ -21,7 +21,7 @@ pub struct Flags {
 
 macro_rules! opcodes {
     ( $( $val:expr => $var:ident, )* ) => {
-        #[derive(Debug)]
+        #[derive(Debug, PartialEq, Eq)]
         pub enum Opcode {
             $(
                 $var = $val,

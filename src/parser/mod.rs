@@ -68,3 +68,39 @@ impl Parser {
         }
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use super::header::*;
+
+    #[test]
+    fn it_parsers_headers() {
+        let req = vec![
+            0x03, // version
+            0x00, // flags
+            0x00, // stream
+            0x00, // stream
+            0x05, // opcode
+            0x00, // length
+            0x00, // length
+            0x00, // length
+            0x01, // length
+        ];
+        let mut parser = Parser::new(req);
+
+        assert_eq!(
+            parser.parse_header(),
+            Header {
+                version: Version::Request,
+                flags: Flags {
+                    compression: false,
+                    tracing: false
+                },
+                stream: 0,
+                opcode: Opcode::Options,
+                length: 1,
+            }
+        )
+    }
+}
