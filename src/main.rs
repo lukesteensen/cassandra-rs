@@ -25,40 +25,9 @@ fn main() {
 
     let mut parser = parser::Parser::new(byte_vec);
 
-    let version = parser.parse_u8();
-    match version {
-        0x03 => println!("Request"),
-        0x83 => println!("Response"),
-        _    => panic!("unknown frame type: {:02x}", version),
-    }
+    let header = parser.parse_header();
+    println!("{:?}", header);
 
-    parser.parse_u8(); // flags
-    parser.parse_u8(); // stream
-    parser.parse_u8(); // stream
-
-    let opcode = parser.parse_u8();
-    println!("{}", match opcode {
-        0x00 => "ERROR",
-        0x01 => "STARTUP",
-        0x02 => "READY",
-        0x03 => "AUTHENTICATE",
-        0x05 => "OPTIONS",
-        0x06 => "SUPPORTED",
-        0x07 => "QUERY",
-        0x08 => "RESULT",
-        0x09 => "PREPARE",
-        0x0A => "EXECUTE",
-        0x0B => "REGISTER",
-        0x0C => "EVENT",
-        0x0D => "BATCH",
-        0x0E => "AUTH_CHALLENGE",
-        0x0F => "AUTH_RESPONSE",
-        0x10 => "AUTH_SUCCESS",
-        _    => panic!("unknown opcode: {:02x}", opcode),
-    });
-
-    let length = parser.parse_u32();
-    println!("body length: {}", length);
     let (lower, upper) = parser.iter.size_hint();
     println!("[{}, {}) bytes remaining", lower, upper.unwrap_or(0));
 
