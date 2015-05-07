@@ -1,5 +1,4 @@
 mod client;
-mod parser;
 
 fn main() {
     let mut client = client::Client::new("127.0.0.1:9042");
