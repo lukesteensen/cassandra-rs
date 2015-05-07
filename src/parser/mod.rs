@@ -1,6 +1,6 @@
 use std::vec::IntoIter;
 
-mod header;
+pub mod header;
 
 pub struct Parser {
     pub iter: IntoIter<u8>,
