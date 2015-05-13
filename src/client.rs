@@ -4,7 +4,8 @@ use std::io::{Read, Write};
 use std::net::ToSocketAddrs;
 use std::collections::HashMap;
 
-mod parser;
+use parser::Parser;
+use protocol::Header;
 
 pub struct Client {
     conn: TcpStream,
@@ -35,12 +36,12 @@ impl Client {
         self.read_string_multimap(header.length as usize)
     }
 
-    fn read_header(&mut self) -> parser::header::Header {
-        parser::Parser::new(self.read_bytes(9)).parse_header()
+    fn read_header(&mut self) -> Header {
+        Parser::new(self.read_bytes(9)).parse_header()
     }
 
     fn read_string_multimap(&mut self, size: usize) -> HashMap<String, Vec<String>> {
-        let mut parser = parser::Parser::new(self.read_bytes(size));
+        let mut parser = Parser::new(self.read_bytes(size));
         let mut map = HashMap::new();
 
         let key_count = parser.parse_u16();

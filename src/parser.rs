@@ -1,6 +1,6 @@
 use std::vec::IntoIter;
 
-pub mod header;
+use protocol::{self, Header, Version, Flags, Opcode};
 
 pub struct Parser {
     pub iter: IntoIter<u8>,
@@ -37,29 +37,29 @@ impl Parser {
         String::from_utf8(byte_vec).unwrap()
     }
 
-    fn parse_version(&mut self) -> header::Version {
+    fn parse_version(&mut self) -> Version {
         let version = self.parse_u8();
         match version {
-            0x03 => header::Version::Request,
-            0x83 => header::Version::Response,
+            0x03 => Version::Request,
+            0x83 => Version::Response,
             _    => panic!("unknown version: {:02x}", version),
         }
     }
 
-    fn parse_flags(&mut self) -> header::Flags {
+    fn parse_flags(&mut self) -> Flags {
         let flags = self.parse_u8();
-        header::Flags {
+        Flags {
             compression: (flags & 0x01) > 0,
             tracing: (flags & 0x02) > 0,
         }
     }
 
-    fn parse_opcode(&mut self) -> header::Opcode {
-        header::parse_opcode(self.parse_u8())
+    fn parse_opcode(&mut self) -> Opcode {
+        protocol::parse_opcode(self.parse_u8())
     }
 
-    pub fn parse_header(&mut self) -> header::Header {
-        header::Header {
+    pub fn parse_header(&mut self) -> Header {
+        Header {
             version: self.parse_version(),
             flags: self.parse_flags(),
             stream: self.parse_u16(),
@@ -72,7 +72,7 @@ impl Parser {
 #[cfg(test)]
 mod test {
     use super::*;
-    use super::header::*;
+    use protocol::*;
 
     #[test]
     fn it_parsers_headers() {
