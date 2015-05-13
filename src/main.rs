@@ -1,5 +1,6 @@
+extern crate byteorder;
+
 mod client;
-mod parser;
 mod protocol;
 
 fn main() {

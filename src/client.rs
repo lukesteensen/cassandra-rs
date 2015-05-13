@@ -1,11 +1,10 @@
 use std::iter;
 use std::net::TcpStream;
-use std::io::{Read, Write};
+use std::io::{Read, Cursor};
 use std::net::ToSocketAddrs;
 use std::collections::HashMap;
 
-use parser::Parser;
-use protocol::Header;
+use protocol::{WireType, Header, Version, Flags, Opcode, StringMultiMap};
 
 pub struct Client {
     conn: TcpStream,
@@ -19,43 +18,18 @@ impl Client {
     }
 
     pub fn get_options(&mut self) -> HashMap<String, Vec<String>> {
-        let req = &[
-            0x03, // version
-            0x00, // flags
-            0x00, // stream
-            0x00, // stream
-            0x05, // opcode
-            0x00, // length
-            0x00, // length
-            0x00, // length
-            0x00, // length
-        ];
-        self.conn.write(req).unwrap();
+        let req = Header {
+            version: Version::Request,
+            flags: Flags { compression: false, tracing: false },
+            stream: 0,
+            opcode: Opcode::Options,
+            length: 0,
+        };
+        req.encode(&mut self.conn);
 
-        let header = self.read_header();
-        self.read_string_multimap(header.length as usize)
-    }
-
-    fn read_header(&mut self) -> Header {
-        Parser::new(self.read_bytes(9)).parse_header()
-    }
-
-    fn read_string_multimap(&mut self, size: usize) -> HashMap<String, Vec<String>> {
-        let mut parser = Parser::new(self.read_bytes(size));
-        let mut map = HashMap::new();
-
-        let key_count = parser.parse_u16();
-        for _ in 0..key_count {
-            let key = parser.parse_string();
-            let val_count = parser.parse_u16();
-            let mut vec = Vec::with_capacity(val_count as usize);
-            for _ in 0..val_count {
-                vec.push(parser.parse_string());
-            }
-            map.insert(key, vec);
-        }
-        assert!(parser.iter.next().is_none());
-        map
+        let header = Header::decode(&mut self.conn);
+        let mut body = Cursor::new(self.read_bytes(header.length as usize));
+        StringMultiMap::decode(&mut body)
     }
 
     fn read_bytes(&mut self, n: usize) -> Vec<u8> {
