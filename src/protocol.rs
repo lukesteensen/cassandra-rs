@@ -180,3 +180,33 @@ impl WireType for String {
         String::from_utf8(byte_vec).unwrap()
     }
 }
+
+pub struct OptionsRequest {
+    header: Header
+}
+
+impl OptionsRequest {
+    pub fn new() -> OptionsRequest {
+        OptionsRequest {
+            header: Header {
+                version: Version::Request,
+                flags: Flags { compression: false, tracing: false },
+                stream: 0,
+                opcode: Opcode::Options,
+                length: 0,
+            }
+        }
+    }
+}
+
+impl WireType for OptionsRequest {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        self.header.encode(buffer);
+    }
+
+    fn decode<T: Read>(buffer: &mut T) -> OptionsRequest {
+        OptionsRequest {
+            header: Header::decode(buffer)
+        }
+    }
+}

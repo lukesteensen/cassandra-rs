@@ -4,7 +4,7 @@ use std::io::{Read, Cursor};
 use std::net::ToSocketAddrs;
 use std::collections::HashMap;
 
-use protocol::{WireType, Header, Version, Flags, Opcode, StringMultiMap};
+use protocol::{WireType, Header, OptionsRequest, StringMultiMap};
 
 pub struct Client {
     conn: TcpStream,
@@ -18,13 +18,7 @@ impl Client {
     }
 
     pub fn get_options(&mut self) -> HashMap<String, Vec<String>> {
-        let req = Header {
-            version: Version::Request,
-            flags: Flags { compression: false, tracing: false },
-            stream: 0,
-            opcode: Opcode::Options,
-            length: 0,
-        };
+        let req = OptionsRequest::new();
         req.encode(&mut self.conn);
 
         let header = Header::decode(&mut self.conn);
