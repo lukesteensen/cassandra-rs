@@ -1,5 +1,5 @@
-use std::io::{Read, Write};
 use std::collections::HashMap;
+use std::io::{Read, Write, Cursor};
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
 pub trait Encodable {
@@ -10,7 +10,7 @@ pub trait Decodable {
     fn decode<T: Read>(buffer: &mut T) -> Self;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct Header {
     version: Version,
     flags: Flags,
@@ -50,7 +50,7 @@ impl Decodable for Header {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub enum Version {
     Request,
     Response,
@@ -76,7 +76,7 @@ impl Decodable for Version {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone)]
 pub struct Flags {
     pub compression: bool,
     pub tracing: bool,
@@ -108,7 +108,7 @@ impl Decodable for Flags {
 
 macro_rules! opcodes {
     ( $( $val:expr => $var:ident, )* ) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        #[derive(Debug, Copy, Clone)]
         pub enum Opcode {
             $(
                 $var = $val,
@@ -160,19 +160,6 @@ opcodes!(
 );
 
 pub type StringMultiMap = HashMap<String, Vec<String>>;
-
-impl Encodable for StringMultiMap {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
-        for (key, vals) in self.iter() {
-            key.encode(buffer);
-            buffer.write_u16::<BigEndian>(vals.len() as u16).unwrap();
-            for val in vals {
-                val.encode(buffer);
-            }
-        }
-    }
-}
 
 impl Decodable for StringMultiMap {
     fn decode<T: Read>(buffer: &mut T) -> StringMultiMap {
@@ -243,20 +230,6 @@ impl Encodable for StringMap {
     }
 }
 
-impl Decodable for StringMap {
-    fn decode<T: Read>(buffer: &mut T) -> StringMap {
-        let mut map = HashMap::new();
-
-        let key_count = buffer.read_u16::<BigEndian>().unwrap();
-        for _ in 0..key_count {
-            let key = String::decode(buffer);
-            let val = String::decode(buffer);
-            map.insert(key, val);
-        }
-        map
-    }
-}
-
 pub struct StartupRequest {
     header: Header,
     body: Vec<u8>,
@@ -323,5 +296,197 @@ impl Encodable for QueryRequest {
         header.length = body.len() as u32;
         header.encode(buffer);
         buffer.write_all(body.as_ref()).unwrap();
+    }
+}
+
+#[derive(Debug)]
+pub struct QueryResult {
+    header: Header,
+    kind: ResultKind,
+    flags: ResultFlags,
+    table_spec: Option<TableSpec>,
+    column_specs: Vec<ColumnSpec>,
+    rows: Vec<Vec<Vec<u8>>>,
+}
+
+impl QueryResult {
+    pub fn get_string(&mut self, column_name: &str) -> String {
+        let mut row = self.rows.remove(0);
+        let (i, _) = self.column_specs.iter().enumerate().find(|&(_, col_spec)| col_spec.name == column_name.to_string()).unwrap();
+        String::from_utf8(row.remove(i)).unwrap()
+    }
+}
+
+impl Decodable for QueryResult {
+    fn decode<T: Read>(buffer: &mut T) -> QueryResult {
+        let header = Header::decode(buffer);
+        let mut body = Cursor::new(buffer.read_exact(header.length as usize).unwrap());
+        let kind = ResultKind::decode(&mut body);
+        if kind != ResultKind::Rows {
+            panic!("Parsing for result of kind {:?} is unimplemented");
+        };
+        let flags = ResultFlags::decode(&mut body);
+        if flags.has_more_pages {
+            println!("warning: has_more_pages set on result but paging is unimplemented");
+        };
+        if flags.no_metadata {
+            panic!("Parsing results with no_metadata set is unimplemented");
+        };
+        let column_count = body.read_i32::<BigEndian>().unwrap();
+        let global_table_spec = if flags.global_table_spec {
+            Some(TableSpec::decode(&mut body))
+        } else {
+            None
+        };
+        let mut column_specs = Vec::with_capacity(column_count as usize);
+        for _ in 0..column_count {
+            let table_spec = if flags.global_table_spec {
+                global_table_spec.clone().unwrap()
+            } else {
+                TableSpec::decode(&mut body)
+            };
+            let spec = ColumnSpec {
+                table_spec: table_spec,
+                name: String::decode(&mut body),
+                datatype: Datatype::decode(&mut body)
+            };
+            column_specs.push(spec);
+        };
+        let row_count = body.read_i32::<BigEndian>().unwrap();
+        let mut rows = Vec::with_capacity(row_count as usize);
+        for _ in 0..row_count {
+            let mut columns = Vec::with_capacity(column_count as usize);
+            for _ in 0..column_count {
+                let size = body.read_i32::<BigEndian>().unwrap() as usize;
+                columns.push(body.read_exact(size).unwrap());
+            }
+            rows.push(columns);
+        };
+        QueryResult {
+            header: header,
+            kind: kind,
+            flags: flags,
+            table_spec: global_table_spec,
+            column_specs: column_specs,
+            rows: rows,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+enum ResultKind {
+    Void,
+    Rows,
+    SetKeyspace,
+    Prepared,
+    SchemaChange,
+}
+
+impl Decodable for ResultKind {
+    fn decode<T: Read>(buffer: &mut T) -> ResultKind {
+        let kind = buffer.read_i32::<BigEndian>().unwrap();
+        match kind {
+            0x0001 => ResultKind::Void,
+            0x0002 => ResultKind::Rows,
+            0x0003 => ResultKind::SetKeyspace,
+            0x0004 => ResultKind::Prepared,
+            0x0005 => ResultKind::SchemaChange,
+            _ => panic!("Unknown result kind: 0x{:04X}", kind),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ResultFlags {
+    global_table_spec: bool,
+    has_more_pages: bool,
+    no_metadata: bool,
+}
+
+impl Decodable for ResultFlags {
+    fn decode<T: Read>(buffer: &mut T) -> ResultFlags {
+        let flags = buffer.read_i32::<BigEndian>().unwrap();
+        ResultFlags {
+            global_table_spec: (flags & 0x01) > 0,
+            has_more_pages: (flags & 0x02) > 0,
+            no_metadata: (flags & 0x04) > 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct TableSpec {
+    keyspace: String,
+    table: String,
+}
+
+impl Decodable for TableSpec {
+    fn decode<T: Read>(buffer: &mut T) -> TableSpec {
+        TableSpec {
+            keyspace: String::decode(buffer),
+            table: String::decode(buffer),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ColumnSpec {
+    table_spec: TableSpec,
+    name: String,
+    datatype: Datatype,
+}
+
+#[derive(Debug)]
+enum Datatype {
+    Custom,
+    Ascii,
+    Bigint,
+    Blob,
+    Boolean,
+    Counter,
+    Decimal,
+    Double,
+    Float,
+    Int,
+    Timestamp,
+    Uuid,
+    Varchar,
+    Varint,
+    Timeuuid,
+    Inet,
+    List,
+    Map,
+    Set,
+    UDT,
+    Tuple,
+}
+
+impl Decodable for Datatype {
+    fn decode<T: Read>(buffer: &mut T) -> Datatype {
+        let option = buffer.read_u16::<BigEndian>().unwrap();
+        match option {
+            0x0000 => Datatype::Custom,
+            0x0001 => Datatype::Ascii,
+            0x0002 => Datatype::Bigint,
+            0x0003 => Datatype::Blob,
+            0x0004 => Datatype::Boolean,
+            0x0005 => Datatype::Counter,
+            0x0006 => Datatype::Decimal,
+            0x0007 => Datatype::Double,
+            0x0008 => Datatype::Float,
+            0x0009 => Datatype::Int,
+            0x000B => Datatype::Timestamp,
+            0x000C => Datatype::Uuid,
+            0x000D => Datatype::Varchar,
+            0x000E => Datatype::Varint,
+            0x000F => Datatype::Timeuuid,
+            0x0010 => Datatype::Inet,
+            0x0020 => Datatype::List,
+            0x0021 => Datatype::Map,
+            0x0022 => Datatype::Set,
+            0x0030 => Datatype::UDT,
+            0x0031 => Datatype::Tuple,
+            _ => panic!("unknown type identifier: 0x{:04X}", option),
+        }
     }
 }

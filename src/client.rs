@@ -2,7 +2,8 @@ use std::io::Cursor;
 use std::net::TcpStream;
 use std::net::ToSocketAddrs;
 use std::collections::HashMap;
-use podio::{BigEndian, ReadPodExt};
+
+use podio::ReadPodExt;
 
 use protocol::*;
 
@@ -27,42 +28,11 @@ impl Client {
         println!("{:?}", ready);
     }
 
-    pub fn query(&mut self, query: String) {
+    pub fn query(&mut self, query: String) -> QueryResult {
         let req = QueryRequest::new(query);
         println!("Sending query...");
         req.encode(&mut self.conn);
-        let result_header = Header::decode(&mut self.conn);
-        println!("{:?}", result_header);
-        let kind = self.conn.read_u32::<BigEndian>().unwrap();
-        println!("Result kind is {}", match kind {
-            1 => "void",
-            2 => "rows",
-            3 => "set_keyspace",
-            4 => "prepared",
-            5 => "schema_change",
-            _ => panic!("unknown result kind"),
-        });
-        let flags = self.conn.read_u32::<BigEndian>().unwrap();
-        println!("Flags: {:032b}", flags);
-        let col_count = self.conn.read_u32::<BigEndian>().unwrap();
-        println!("{} columns returned", col_count);
-        let keyspace_name = String::decode(&mut self.conn);
-        let table_name = String::decode(&mut self.conn);
-        println!("Result from {}.{}", keyspace_name, table_name);
-        let column_name = String::decode(&mut self.conn);
-        println!("Column name: {}", column_name);
-        let type_id = self.conn.read_u16::<BigEndian>().unwrap();
-        println!("type id: 0x{:04X}", type_id);
-        let row_count = self.conn.read_u32::<BigEndian>().unwrap();
-        println!("{} rows returned", row_count);
-        for _ in 0..row_count {
-            for _ in 0..col_count {
-                let n = self.conn.read_i32::<BigEndian>().unwrap();
-                println!("{} byte value", n);
-                let bytes = self.conn.read_exact(n as usize).unwrap();
-                println!("value: {}", String::from_utf8(bytes).unwrap());
-            }
-        }
+        QueryResult::decode(&mut self.conn)
     }
 
     fn get_options(&mut self) -> HashMap<String, Vec<String>> {
