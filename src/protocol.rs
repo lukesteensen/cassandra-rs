@@ -67,6 +67,12 @@ pub struct Flags {
     pub tracing: bool,
 }
 
+impl Flags {
+    fn new() -> Flags {
+        Flags { compression: false, tracing: false }
+    }
+}
+
 impl WireType for Flags {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let compression = if self.compression { 0x01 } else { 0x00 };
@@ -190,7 +196,7 @@ impl OptionsRequest {
         OptionsRequest {
             header: Header {
                 version: Version::Request,
-                flags: Flags { compression: false, tracing: false },
+                flags: Flags::new(),
                 stream: 0,
                 opcode: Opcode::Options,
                 length: 0,
@@ -207,6 +213,74 @@ impl WireType for OptionsRequest {
     fn decode<T: Read>(buffer: &mut T) -> OptionsRequest {
         OptionsRequest {
             header: Header::decode(buffer)
+        }
+    }
+}
+
+type StringMap = HashMap<String, String>;
+
+impl WireType for StringMap {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
+        for (key, val) in self.iter() {
+            key.encode(buffer);
+            val.encode(buffer);
+        }
+    }
+
+    fn decode<T: Read>(buffer: &mut T) -> StringMap {
+        let mut map = HashMap::new();
+
+        let key_count = buffer.read_u16::<BigEndian>().unwrap();
+        for _ in 0..key_count {
+            let key = String::decode(buffer);
+            let val = String::decode(buffer);
+            map.insert(key, val);
+        }
+        map
+    }
+}
+
+pub struct StartupRequest {
+    header: Header,
+    body: Vec<u8>,
+}
+
+impl StartupRequest {
+    pub fn new(cql_version: &str) -> StartupRequest {
+        let mut options = HashMap::new();
+        options.insert("CQL_VERSION".into(), cql_version.to_string());
+        let mut body = Vec::new();
+        options.encode(&mut body);
+        StartupRequest {
+            header: Header {
+                version: Version::Request,
+                flags: Flags::new(),
+                stream: 0,
+                opcode: Opcode::Startup,
+                length: body.len() as u32,
+            },
+            body: body,
+        }
+    }
+}
+
+impl WireType for StartupRequest {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        self.header.encode(buffer);
+        buffer.write(self.body.as_ref()).unwrap();
+    }
+
+    fn decode<T: Read>(buffer: &mut T) -> StartupRequest {
+        let header = Header::decode(buffer);
+        let n = header.length as usize;
+        let mut body = Vec::with_capacity(n);
+        body.extend(iter::repeat(0).take(n));
+        let bytes_read = buffer.read(&mut body[..]).unwrap();
+        assert_eq!(bytes_read, n);
+        StartupRequest {
+            header: header,
+            body: body,
         }
     }
 }

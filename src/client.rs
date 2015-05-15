@@ -4,7 +4,7 @@ use std::io::{Read, Cursor};
 use std::net::ToSocketAddrs;
 use std::collections::HashMap;
 
-use protocol::{WireType, Header, OptionsRequest, StringMultiMap};
+use protocol::{WireType, Header, OptionsRequest, StartupRequest, StringMultiMap};
 
 pub struct Client {
     conn: TcpStream,
@@ -17,7 +17,17 @@ impl Client {
         }
     }
 
-    pub fn get_options(&mut self) -> HashMap<String, Vec<String>> {
+    pub fn initialize(&mut self) {
+        let options = self.get_options();
+        let cql_version = options["CQL_VERSION"][0].clone();
+        let req = StartupRequest::new(cql_version.as_ref());
+        req.encode(&mut self.conn);
+        let ready = Header::decode(&mut self.conn);
+        println!("Connection initialized with CQL version {}", cql_version);
+        println!("{:?}", ready);
+    }
+
+    fn get_options(&mut self) -> HashMap<String, Vec<String>> {
         let req = OptionsRequest::new();
         req.encode(&mut self.conn);
 
