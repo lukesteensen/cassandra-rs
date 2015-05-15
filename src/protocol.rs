@@ -2,8 +2,11 @@ use std::io::{Read, Write};
 use std::collections::HashMap;
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
-pub trait WireType {
+pub trait Encodable {
     fn encode<T: Write>(&self, buffer: &mut T);
+}
+
+pub trait Decodable {
     fn decode<T: Read>(buffer: &mut T) -> Self;
 }
 
@@ -16,7 +19,7 @@ pub struct Header {
     pub length: u32,
 }
 
-impl WireType for Header {
+impl Encodable for Header {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.version.encode(buffer);
         self.flags.encode(buffer);
@@ -24,7 +27,9 @@ impl WireType for Header {
         self.opcode.encode(buffer);
         buffer.write_u32::<BigEndian>(self.length).unwrap();
     }
+}
 
+impl Decodable for Header {
     fn decode<T: Read>(buffer: &mut T) -> Header {
         let header = Header {
             version: Version::decode(buffer),
@@ -51,14 +56,16 @@ pub enum Version {
     Response,
 }
 
-impl WireType for Version {
+impl Encodable for Version {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u8(match *self {
             Version::Request => 0x03,
             Version::Response => 0x83,
         }).unwrap();
     }
+}
 
+impl Decodable for Version {
     fn decode<T: Read>(buffer: &mut T) -> Version {
         let version = buffer.read_u8().unwrap();
         match version {
@@ -81,13 +88,15 @@ impl Flags {
     }
 }
 
-impl WireType for Flags {
+impl Encodable for Flags {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let compression = if self.compression { 0x01 } else { 0x00 };
         let tracing = if self.tracing { 0x02 } else { 0x00 };
         buffer.write_u8(compression | tracing).unwrap();
     }
+}
 
+impl Decodable for Flags {
     fn decode<T: Read>(buffer: &mut T) -> Flags {
         let flags = buffer.read_u8().unwrap();
         Flags {
@@ -106,7 +115,7 @@ macro_rules! opcodes {
              )*
         }
 
-        impl WireType for Opcode {
+        impl Encodable for Opcode {
             fn encode<T: Write>(&self, buffer: &mut T) {
                 let val = match *self {
                     $(
@@ -115,7 +124,9 @@ macro_rules! opcodes {
                 };
                 buffer.write_u8(val).unwrap();
             }
+        }
 
+        impl Decodable for Opcode {
             fn decode<T: Read>(buffer: &mut T) -> Opcode {
                 let opcode = buffer.read_u8().unwrap();
                 match opcode {
@@ -150,7 +161,7 @@ opcodes!(
 
 pub type StringMultiMap = HashMap<String, Vec<String>>;
 
-impl WireType for StringMultiMap {
+impl Encodable for StringMultiMap {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         for (key, vals) in self.iter() {
@@ -161,7 +172,9 @@ impl WireType for StringMultiMap {
             }
         }
     }
+}
 
+impl Decodable for StringMultiMap {
     fn decode<T: Read>(buffer: &mut T) -> StringMultiMap {
         let mut map = HashMap::new();
 
@@ -179,12 +192,14 @@ impl WireType for StringMultiMap {
     }
 }
 
-impl WireType for String {
+impl Encodable for String {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         buffer.write_all(self.clone().into_bytes().as_ref()).unwrap();
     }
+}
 
+impl Decodable for String {
     fn decode<T: Read>(buffer: &mut T) -> String {
         let len = buffer.read_u16::<BigEndian>().unwrap();
         let byte_vec = buffer.read_exact(len as usize).unwrap();
@@ -210,21 +225,15 @@ impl OptionsRequest {
     }
 }
 
-impl WireType for OptionsRequest {
+impl Encodable for OptionsRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.header.encode(buffer);
-    }
-
-    fn decode<T: Read>(buffer: &mut T) -> OptionsRequest {
-        OptionsRequest {
-            header: Header::decode(buffer)
-        }
     }
 }
 
 type StringMap = HashMap<String, String>;
 
-impl WireType for StringMap {
+impl Encodable for StringMap {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         for (key, val) in self.iter() {
@@ -232,7 +241,9 @@ impl WireType for StringMap {
             val.encode(buffer);
         }
     }
+}
 
+impl Decodable for StringMap {
     fn decode<T: Read>(buffer: &mut T) -> StringMap {
         let mut map = HashMap::new();
 
@@ -270,20 +281,10 @@ impl StartupRequest {
     }
 }
 
-impl WireType for StartupRequest {
+impl Encodable for StartupRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.header.encode(buffer);
         buffer.write(self.body.as_ref()).unwrap();
-    }
-
-    fn decode<T: Read>(buffer: &mut T) -> StartupRequest {
-        let header = Header::decode(buffer);
-        let n = header.length as usize;
-        let body = buffer.read_exact(n).unwrap();
-        StartupRequest {
-            header: header,
-            body: body,
-        }
     }
 }
 
@@ -311,7 +312,7 @@ impl QueryRequest {
     }
 }
 
-impl WireType for QueryRequest {
+impl Encodable for QueryRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let mut body = Vec::new();
         let mut header = self.header;
@@ -322,9 +323,5 @@ impl WireType for QueryRequest {
         header.length = body.len() as u32;
         header.encode(buffer);
         buffer.write_all(body.as_ref()).unwrap();
-    }
-
-    fn decode<T: Read>(buffer: &mut T) -> QueryRequest {
-        unimplemented!();
     }
 }
