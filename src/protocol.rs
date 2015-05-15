@@ -1,19 +1,18 @@
-use std::iter;
 use std::io::{Read, Write};
 use std::collections::HashMap;
-use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use podio::{BigEndian, ReadPodExt, WritePodExt};
 
 pub trait WireType {
     fn encode<T: Write>(&self, buffer: &mut T);
     fn decode<T: Read>(buffer: &mut T) -> Self;
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Header {
-    pub version: Version,
-    pub flags: Flags,
-    pub stream: u16,
-    pub opcode: Opcode,
+    version: Version,
+    flags: Flags,
+    stream: u16,
+    opcode: Opcode,
     pub length: u32,
 }
 
@@ -27,17 +26,26 @@ impl WireType for Header {
     }
 
     fn decode<T: Read>(buffer: &mut T) -> Header {
-        Header {
+        let header = Header {
             version: Version::decode(buffer),
             flags: Flags::decode(buffer),
             stream: buffer.read_u16::<BigEndian>().unwrap(),
             opcode: Opcode::decode(buffer),
             length: buffer.read_u32::<BigEndian>().unwrap(),
+        };
+
+        match header.opcode {
+            Opcode::Error => {
+                let code = buffer.read_u32::<BigEndian>().unwrap();
+                let message = String::decode(buffer);
+                panic!("Error 0x{:04X}: {}", code, message);
+            },
+            _ => header,
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Version {
     Request,
     Response,
@@ -61,7 +69,7 @@ impl WireType for Version {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Flags {
     pub compression: bool,
     pub tracing: bool,
@@ -91,7 +99,7 @@ impl WireType for Flags {
 
 macro_rules! opcodes {
     ( $( $val:expr => $var:ident, )* ) => {
-        #[derive(Debug, PartialEq, Eq)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Opcode {
             $(
                 $var = $val,
@@ -179,10 +187,7 @@ impl WireType for String {
 
     fn decode<T: Read>(buffer: &mut T) -> String {
         let len = buffer.read_u16::<BigEndian>().unwrap();
-        let mut byte_vec = Vec::with_capacity(len as usize);
-        byte_vec.extend(iter::repeat(0).take(len as usize));
-        let bytes_read = buffer.read(&mut byte_vec[..]).unwrap();
-        assert_eq!(bytes_read, len as usize);
+        let byte_vec = buffer.read_exact(len as usize).unwrap();
         String::from_utf8(byte_vec).unwrap()
     }
 }
@@ -274,13 +279,52 @@ impl WireType for StartupRequest {
     fn decode<T: Read>(buffer: &mut T) -> StartupRequest {
         let header = Header::decode(buffer);
         let n = header.length as usize;
-        let mut body = Vec::with_capacity(n);
-        body.extend(iter::repeat(0).take(n));
-        let bytes_read = buffer.read(&mut body[..]).unwrap();
-        assert_eq!(bytes_read, n);
+        let body = buffer.read_exact(n).unwrap();
         StartupRequest {
             header: header,
             body: body,
         }
+    }
+}
+
+pub struct QueryRequest {
+    header: Header,
+    query: String,
+    consistency: u16,
+    flags: u8,
+}
+
+impl QueryRequest {
+    pub fn new(query: String) -> QueryRequest {
+        QueryRequest {
+            header: Header {
+                version: Version::Request,
+                flags: Flags::new(),
+                stream: 0,
+                opcode: Opcode::Query,
+                length: 0,
+            },
+            query: query,
+            consistency: 0x0001,
+            flags: 0x00,
+        }
+    }
+}
+
+impl WireType for QueryRequest {
+    fn encode<T: Write>(&self, buffer: &mut T) {
+        let mut body = Vec::new();
+        let mut header = self.header;
+        body.write_u32::<BigEndian>(self.query.len() as u32).unwrap();
+        body.write_all(self.query.clone().into_bytes().as_ref()).unwrap();
+        body.write_u16::<BigEndian>(self.consistency).unwrap();
+        body.write_u8(self.flags).unwrap();
+        header.length = body.len() as u32;
+        header.encode(buffer);
+        buffer.write_all(body.as_ref()).unwrap();
+    }
+
+    fn decode<T: Read>(buffer: &mut T) -> QueryRequest {
+        unimplemented!();
     }
 }
