@@ -305,16 +305,7 @@ pub struct QueryResult {
     kind: ResultKind,
     flags: ResultFlags,
     table_spec: Option<TableSpec>,
-    column_specs: Vec<ColumnSpec>,
-    rows: Vec<Vec<Vec<u8>>>,
-}
-
-impl QueryResult {
-    pub fn get_string(&mut self, column_name: &str) -> String {
-        let mut row = self.rows.remove(0);
-        let (i, _) = self.column_specs.iter().enumerate().find(|&(_, col_spec)| col_spec.name == column_name.to_string()).unwrap();
-        String::from_utf8(row.remove(i)).unwrap()
-    }
+    pub rows: Vec<Row>,
 }
 
 impl Decodable for QueryResult {
@@ -355,22 +346,26 @@ impl Decodable for QueryResult {
         let row_count = body.read_i32::<BigEndian>().unwrap();
         let mut rows = Vec::with_capacity(row_count as usize);
         for _ in 0..row_count {
-            let mut columns = Vec::with_capacity(column_count as usize);
-            for _ in 0..column_count {
+            let mut columns = HashMap::with_capacity(column_count as usize);
+            for column_spec in column_specs.iter() {
                 let size = body.read_i32::<BigEndian>().unwrap() as usize;
-                columns.push(body.read_exact(size).unwrap());
+                columns.insert(column_spec.name.clone(), body.read_exact(size).unwrap());
             }
-            rows.push(columns);
+            rows.push(Row { columns: columns });
         };
         QueryResult {
             header: header,
             kind: kind,
             flags: flags,
             table_spec: global_table_spec,
-            column_specs: column_specs,
             rows: rows,
         }
     }
+}
+
+#[derive(Debug)]
+pub struct Row {
+    pub columns: HashMap<String, Vec<u8>>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
