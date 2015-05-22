@@ -1,10 +1,9 @@
-extern crate podio;
+extern crate cassandra;
 
-mod client;
-mod protocol;
+use cassandra::client::Client;
 
 fn main() {
-    let mut client = client::Client::new("127.0.0.1:9042");
+    let mut client = Client::new("127.0.0.1:9042");
     client.initialize();
     let mut result = client.query("select keyspace_name from system.schema_keyspaces".to_string());
     for row in result.rows.iter_mut() {

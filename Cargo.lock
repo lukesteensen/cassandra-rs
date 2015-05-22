@@ -1,5 +1,5 @@
 [root]
-name = "cassandra-rs"
+name = "cassandra"
 version = "0.0.1"
 dependencies = [
  "podio 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",

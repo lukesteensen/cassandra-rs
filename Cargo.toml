@@ -1,6 +1,6 @@
 [package]
 
-name = "cassandra-rs"
+name = "cassandra"
 version = "0.0.1"
 authors = ["Luke Steensen <luke.steensen@gmail.com>"]
 
