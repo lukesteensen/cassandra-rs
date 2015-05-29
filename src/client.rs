@@ -25,14 +25,19 @@ impl Client {
         req.encode(&mut self.conn);
         let ready = Header::decode(&mut self.conn);
         println!("Connection initialized with CQL version {}", cql_version);
-        println!("{:?}", ready);
+        assert_eq!(ready.opcode, Opcode::Ready);
     }
 
-    pub fn query(&mut self, query: String) -> QueryResult {
-        let req = QueryRequest::new(query);
-        println!("Sending query...");
+    pub fn query(&mut self, query: &str) -> QueryResult {
+        let req = QueryRequest::new(query.to_string());
         req.encode(&mut self.conn);
         QueryResult::decode(&mut self.conn)
+    }
+
+    pub fn execute(&mut self, statement: &str) {
+        let statement = QueryRequest::new(statement.to_string());
+        statement.encode(&mut self.conn);
+        NonRowResult::decode(&mut self.conn);
     }
 
     fn get_options(&mut self) -> HashMap<String, Vec<String>> {

@@ -17,7 +17,7 @@ pub struct Header {
     version: Version,
     flags: Flags,
     stream: u16,
-    opcode: Opcode,
+    pub opcode: Opcode,
     pub length: u32,
 }
 
@@ -110,7 +110,7 @@ impl FromWire for Flags {
 
 macro_rules! opcodes {
     ( $( $val:expr => $var:ident, )* ) => {
-        #[derive(Debug, Copy, Clone)]
+        #[derive(Debug, Copy, Clone, PartialEq)]
         pub enum Opcode {
             $(
                 $var = $val,
@@ -304,7 +304,7 @@ impl ToWire for QueryRequest {
 #[derive(Debug)]
 pub struct QueryResult {
     header: Header,
-    kind: ResultKind,
+    kind: ResultKind, // TODO: always rows?
     flags: ResultFlags,
     table_spec: Option<TableSpec>,
     pub rows: Vec<Row>,
@@ -459,6 +459,27 @@ impl FromWire for CQLType {
             0x0030 => CQLType::UDT,
             0x0031 => CQLType::Tuple,
             _ => panic!("unknown type identifier: 0x{:04X}", option),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct NonRowResult {
+    header: Header,
+    kind: ResultKind,
+}
+
+impl FromWire for NonRowResult {
+    fn decode<T: Read>(buffer: &mut T) -> NonRowResult {
+        let header = Header::decode(buffer);
+        let mut body = Cursor::new(buffer.read_exact(header.length as usize).unwrap());
+        let kind = ResultKind::decode(&mut body);
+        if ![ResultKind::SchemaChange, ResultKind::Void].contains(&kind) {
+            panic!("Unexpected result kind {:?}", kind);
+        };
+        NonRowResult {
+            header: header,
+            kind: kind,
         }
     }
 }
