@@ -4,11 +4,11 @@ use podio::{BigEndian, ReadPodExt, WritePodExt};
 
 use types::CQLType;
 
-pub trait Encodable {
+pub trait ToWire {
     fn encode<T: Write>(&self, buffer: &mut T);
 }
 
-pub trait Decodable {
+pub trait FromWire {
     fn decode<T: Read>(buffer: &mut T) -> Self;
 }
 
@@ -21,7 +21,7 @@ pub struct Header {
     pub length: u32,
 }
 
-impl Encodable for Header {
+impl ToWire for Header {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.version.encode(buffer);
         self.flags.encode(buffer);
@@ -31,7 +31,7 @@ impl Encodable for Header {
     }
 }
 
-impl Decodable for Header {
+impl FromWire for Header {
     fn decode<T: Read>(buffer: &mut T) -> Header {
         let header = Header {
             version: Version::decode(buffer),
@@ -58,7 +58,7 @@ pub enum Version {
     Response,
 }
 
-impl Encodable for Version {
+impl ToWire for Version {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u8(match *self {
             Version::Request => 0x03,
@@ -67,7 +67,7 @@ impl Encodable for Version {
     }
 }
 
-impl Decodable for Version {
+impl FromWire for Version {
     fn decode<T: Read>(buffer: &mut T) -> Version {
         let version = buffer.read_u8().unwrap();
         match version {
@@ -90,7 +90,7 @@ impl Flags {
     }
 }
 
-impl Encodable for Flags {
+impl ToWire for Flags {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let compression = if self.compression { 0x01 } else { 0x00 };
         let tracing = if self.tracing { 0x02 } else { 0x00 };
@@ -98,7 +98,7 @@ impl Encodable for Flags {
     }
 }
 
-impl Decodable for Flags {
+impl FromWire for Flags {
     fn decode<T: Read>(buffer: &mut T) -> Flags {
         let flags = buffer.read_u8().unwrap();
         Flags {
@@ -117,7 +117,7 @@ macro_rules! opcodes {
              )*
         }
 
-        impl Encodable for Opcode {
+        impl ToWire for Opcode {
             fn encode<T: Write>(&self, buffer: &mut T) {
                 let val = match *self {
                     $(
@@ -128,7 +128,7 @@ macro_rules! opcodes {
             }
         }
 
-        impl Decodable for Opcode {
+        impl FromWire for Opcode {
             fn decode<T: Read>(buffer: &mut T) -> Opcode {
                 let opcode = buffer.read_u8().unwrap();
                 match opcode {
@@ -163,7 +163,7 @@ opcodes!(
 
 pub type StringMultiMap = HashMap<String, Vec<String>>;
 
-impl Decodable for StringMultiMap {
+impl FromWire for StringMultiMap {
     fn decode<T: Read>(buffer: &mut T) -> StringMultiMap {
         let mut map = HashMap::new();
 
@@ -181,14 +181,14 @@ impl Decodable for StringMultiMap {
     }
 }
 
-impl Encodable for String {
+impl ToWire for String {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         buffer.write_all(self.clone().into_bytes().as_ref()).unwrap();
     }
 }
 
-impl Decodable for String {
+impl FromWire for String {
     fn decode<T: Read>(buffer: &mut T) -> String {
         let len = buffer.read_u16::<BigEndian>().unwrap();
         let byte_vec = buffer.read_exact(len as usize).unwrap();
@@ -214,7 +214,7 @@ impl OptionsRequest {
     }
 }
 
-impl Encodable for OptionsRequest {
+impl ToWire for OptionsRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.header.encode(buffer);
     }
@@ -222,7 +222,7 @@ impl Encodable for OptionsRequest {
 
 type StringMap = HashMap<String, String>;
 
-impl Encodable for StringMap {
+impl ToWire for StringMap {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         for (key, val) in self.iter() {
@@ -256,7 +256,7 @@ impl StartupRequest {
     }
 }
 
-impl Encodable for StartupRequest {
+impl ToWire for StartupRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         self.header.encode(buffer);
         buffer.write(self.body.as_ref()).unwrap();
@@ -287,7 +287,7 @@ impl QueryRequest {
     }
 }
 
-impl Encodable for QueryRequest {
+impl ToWire for QueryRequest {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let mut body = Vec::new();
         let mut header = self.header;
@@ -310,7 +310,7 @@ pub struct QueryResult {
     pub rows: Vec<Row>,
 }
 
-impl Decodable for QueryResult {
+impl FromWire for QueryResult {
     fn decode<T: Read>(buffer: &mut T) -> QueryResult {
         let header = Header::decode(buffer);
         let mut body = Cursor::new(buffer.read_exact(header.length as usize).unwrap());
@@ -379,7 +379,7 @@ enum ResultKind {
     SchemaChange,
 }
 
-impl Decodable for ResultKind {
+impl FromWire for ResultKind {
     fn decode<T: Read>(buffer: &mut T) -> ResultKind {
         let kind = buffer.read_i32::<BigEndian>().unwrap();
         match kind {
@@ -400,7 +400,7 @@ struct ResultFlags {
     no_metadata: bool,
 }
 
-impl Decodable for ResultFlags {
+impl FromWire for ResultFlags {
     fn decode<T: Read>(buffer: &mut T) -> ResultFlags {
         let flags = buffer.read_i32::<BigEndian>().unwrap();
         ResultFlags {
@@ -417,7 +417,7 @@ struct TableSpec {
     table: String,
 }
 
-impl Decodable for TableSpec {
+impl FromWire for TableSpec {
     fn decode<T: Read>(buffer: &mut T) -> TableSpec {
         TableSpec {
             keyspace: String::decode(buffer),
@@ -433,7 +433,7 @@ struct ColumnSpec {
     datatype: CQLType,
 }
 
-impl Decodable for CQLType {
+impl FromWire for CQLType {
     fn decode<T: Read>(buffer: &mut T) -> CQLType {
         let option = buffer.read_u16::<BigEndian>().unwrap();
         match option {
