@@ -12,9 +12,9 @@ fn main() {
 
     client.execute("INSERT INTO testing.people (name) VALUES ('John')");
 
-    let mut result = client.query("SELECT * FROM testing.people");
+    let result = client.query("SELECT * FROM testing.people");
     assert_eq!(result.rows.len(), 1);
-    let mut row = result.rows.remove(0);
+    let ref row = result.rows[0];
     assert_eq!(row.columns.len(), 1);
-    assert_eq!(String::from_utf8(row.columns.remove("name").unwrap()).unwrap(), "John".to_string());
+    assert_eq!(String::from_utf8(row.columns.get("name").unwrap().clone()).unwrap(), "John".to_string());
 }
