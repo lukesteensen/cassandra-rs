@@ -16,5 +16,6 @@ fn main() {
     assert_eq!(result.rows.len(), 1);
     let ref row = result.rows[0];
     assert_eq!(row.columns.len(), 1);
-    assert_eq!(String::from_utf8(row.columns.get("name").unwrap().clone()).unwrap(), "John".to_string());
+    let name: String = row.get("name");
+    assert_eq!(name, "John".to_string());
 }

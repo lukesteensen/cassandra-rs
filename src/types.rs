@@ -22,3 +22,13 @@ pub enum CQLType {
     UDT,
     Tuple,
 }
+
+pub trait FromCQL {
+    fn parse(buf: Vec<u8>) -> Self;
+}
+
+impl FromCQL for String {
+    fn parse(buf: Vec<u8>) -> String {
+        String::from_utf8(buf).unwrap()
+    }
+}

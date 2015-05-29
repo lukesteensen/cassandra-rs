@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write, Cursor};
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
-use types::CQLType;
+use types::{CQLType, FromCQL};
 
 pub trait ToWire {
     fn encode<T: Write>(&self, buffer: &mut T);
@@ -368,6 +368,13 @@ impl FromWire for QueryResult {
 #[derive(Debug)]
 pub struct Row {
     pub columns: HashMap<String, Vec<u8>>,
+}
+
+impl Row {
+    pub fn get<T: FromCQL>(&self, col: &str) -> T {
+        let bytes = self.columns.get(col).unwrap().clone();
+        T::parse(bytes)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
