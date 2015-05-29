@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::io::{Read, Write, Cursor};
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
+use types::CQLType;
+
 pub trait Encodable {
     fn encode<T: Write>(&self, buffer: &mut T);
 }
@@ -339,7 +341,7 @@ impl Decodable for QueryResult {
             let spec = ColumnSpec {
                 table_spec: table_spec,
                 name: String::decode(&mut body),
-                datatype: Datatype::decode(&mut body)
+                datatype: CQLType::decode(&mut body)
             };
             column_specs.push(spec);
         };
@@ -428,59 +430,34 @@ impl Decodable for TableSpec {
 struct ColumnSpec {
     table_spec: TableSpec,
     name: String,
-    datatype: Datatype,
+    datatype: CQLType,
 }
 
-#[derive(Debug)]
-enum Datatype {
-    Custom,
-    Ascii,
-    Bigint,
-    Blob,
-    Boolean,
-    Counter,
-    Decimal,
-    Double,
-    Float,
-    Int,
-    Timestamp,
-    Uuid,
-    Varchar,
-    Varint,
-    Timeuuid,
-    Inet,
-    List,
-    Map,
-    Set,
-    UDT,
-    Tuple,
-}
-
-impl Decodable for Datatype {
-    fn decode<T: Read>(buffer: &mut T) -> Datatype {
+impl Decodable for CQLType {
+    fn decode<T: Read>(buffer: &mut T) -> CQLType {
         let option = buffer.read_u16::<BigEndian>().unwrap();
         match option {
-            0x0000 => Datatype::Custom,
-            0x0001 => Datatype::Ascii,
-            0x0002 => Datatype::Bigint,
-            0x0003 => Datatype::Blob,
-            0x0004 => Datatype::Boolean,
-            0x0005 => Datatype::Counter,
-            0x0006 => Datatype::Decimal,
-            0x0007 => Datatype::Double,
-            0x0008 => Datatype::Float,
-            0x0009 => Datatype::Int,
-            0x000B => Datatype::Timestamp,
-            0x000C => Datatype::Uuid,
-            0x000D => Datatype::Varchar,
-            0x000E => Datatype::Varint,
-            0x000F => Datatype::Timeuuid,
-            0x0010 => Datatype::Inet,
-            0x0020 => Datatype::List,
-            0x0021 => Datatype::Map,
-            0x0022 => Datatype::Set,
-            0x0030 => Datatype::UDT,
-            0x0031 => Datatype::Tuple,
+            0x0000 => CQLType::Custom,
+            0x0001 => CQLType::Ascii,
+            0x0002 => CQLType::Bigint,
+            0x0003 => CQLType::Blob,
+            0x0004 => CQLType::Boolean,
+            0x0005 => CQLType::Counter,
+            0x0006 => CQLType::Decimal,
+            0x0007 => CQLType::Double,
+            0x0008 => CQLType::Float,
+            0x0009 => CQLType::Int,
+            0x000B => CQLType::Timestamp,
+            0x000C => CQLType::Uuid,
+            0x000D => CQLType::Varchar,
+            0x000E => CQLType::Varint,
+            0x000F => CQLType::Timeuuid,
+            0x0010 => CQLType::Inet,
+            0x0020 => CQLType::List,
+            0x0021 => CQLType::Map,
+            0x0022 => CQLType::Set,
+            0x0030 => CQLType::UDT,
+            0x0031 => CQLType::Tuple,
             _ => panic!("unknown type identifier: 0x{:04X}", option),
         }
     }
