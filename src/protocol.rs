@@ -263,15 +263,15 @@ impl ToWire for StartupRequest {
     }
 }
 
-pub struct QueryRequest {
+pub struct QueryRequest<'a> {
     header: Header,
-    query: String,
+    query: &'a str,
     consistency: u16,
     flags: u8,
 }
 
-impl QueryRequest {
-    pub fn new(query: String) -> QueryRequest {
+impl<'a> QueryRequest<'a> {
+    pub fn new(query: &str) -> QueryRequest {
         QueryRequest {
             header: Header {
                 version: Version::Request,
@@ -287,12 +287,12 @@ impl QueryRequest {
     }
 }
 
-impl ToWire for QueryRequest {
+impl<'a> ToWire for QueryRequest<'a> {
     fn encode<T: Write>(&self, buffer: &mut T) {
         let mut body = Vec::new();
         let mut header = self.header;
         body.write_u32::<BigEndian>(self.query.len() as u32).unwrap();
-        body.write_all(self.query.clone().into_bytes().as_ref()).unwrap();
+        body.write_all(self.query.as_bytes()).unwrap();
         body.write_u16::<BigEndian>(self.consistency).unwrap();
         body.write_u8(self.flags).unwrap();
         header.length = body.len() as u32;

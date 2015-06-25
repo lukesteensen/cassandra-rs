@@ -29,13 +29,13 @@ impl Client {
     }
 
     pub fn query(&mut self, query: &str) -> QueryResult {
-        let req = QueryRequest::new(query.to_string());
+        let req = QueryRequest::new(query);
         req.encode(&mut self.conn);
         QueryResult::decode(&mut self.conn)
     }
 
     pub fn execute(&mut self, statement: &str) {
-        let statement = QueryRequest::new(statement.to_string());
+        let statement = QueryRequest::new(statement);
         statement.encode(&mut self.conn);
         NonRowResult::decode(&mut self.conn);
     }
