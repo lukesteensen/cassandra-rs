@@ -1,3 +1,4 @@
+extern crate uuid;
 extern crate podio;
 
 pub mod client;

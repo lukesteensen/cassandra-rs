@@ -444,7 +444,10 @@ impl FromWire for CQLType {
     fn decode<T: Read>(buffer: &mut T) -> CQLType {
         let option = buffer.read_u16::<BigEndian>().unwrap();
         match option {
-            0x0000 => CQLType::Custom,
+            0x0000 => {
+                String::decode(buffer);
+                CQLType::Custom
+            },
             0x0001 => CQLType::Ascii,
             0x0002 => CQLType::Bigint,
             0x0003 => CQLType::Blob,
@@ -460,11 +463,27 @@ impl FromWire for CQLType {
             0x000E => CQLType::Varint,
             0x000F => CQLType::Timeuuid,
             0x0010 => CQLType::Inet,
-            0x0020 => CQLType::List,
-            0x0021 => CQLType::Map,
-            0x0022 => CQLType::Set,
-            0x0030 => CQLType::UDT,
-            0x0031 => CQLType::Tuple,
+            0x0020 => {
+                CQLType::decode(buffer);
+                CQLType::List
+            },
+            0x0021 => {
+                CQLType::decode(buffer);
+                CQLType::decode(buffer);
+                CQLType::Map
+            },
+            0x0022 => {
+                CQLType::decode(buffer);
+                CQLType::Set
+            },
+            0x0030 => {
+                panic!("UDTs are not currently supported");
+                // CQLType::UDT
+            },
+            0x0031 => {
+                panic!("Tuples are not currently supported");
+                // CQLType::Tuple
+            },
             _ => panic!("unknown type identifier: 0x{:04X}", option),
         }
     }
