@@ -181,10 +181,10 @@ impl FromWire for StringMultiMap {
     }
 }
 
-impl ToWire for String {
+impl<'a> ToWire for &'a str {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
-        buffer.write_all(self.clone().into_bytes().as_ref()).unwrap();
+        buffer.write_all(self.as_bytes()).unwrap();
     }
 }
 
@@ -220,9 +220,9 @@ impl ToWire for OptionsRequest {
     }
 }
 
-type StringMap = HashMap<String, String>;
+type StringMap<'a> = HashMap<&'a str, &'a str>;
 
-impl ToWire for StringMap {
+impl<'a> ToWire for StringMap<'a> {
     fn encode<T: Write>(&self, buffer: &mut T) {
         buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
         for (key, val) in self.iter() {
@@ -240,7 +240,7 @@ pub struct StartupRequest {
 impl StartupRequest {
     pub fn new(cql_version: &str) -> StartupRequest {
         let mut options = HashMap::new();
-        options.insert("CQL_VERSION".into(), cql_version.to_string());
+        options.insert("CQL_VERSION", cql_version);
         let mut body = Vec::new();
         options.encode(&mut body);
         StartupRequest {
