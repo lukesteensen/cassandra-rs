@@ -20,8 +20,8 @@ impl Client {
 
     pub fn initialize(&mut self) {
         let options = self.get_options();
-        let cql_version = options["CQL_VERSION"][0].clone();
-        let req = StartupRequest::new(cql_version.as_ref());
+        let cql_version = &options["CQL_VERSION"][0];
+        let req = StartupRequest::new(cql_version);
         req.encode(&mut self.conn);
         let ready = Header::decode(&mut self.conn);
         println!("Connection initialized with CQL version {}", cql_version);
