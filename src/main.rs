@@ -7,15 +7,15 @@ use cassandra::client::Client;
 
 fn main() {
     let mut client = Client::new("127.0.0.1:9042");
-    client.initialize();
+    client.initialize().unwrap();
 
-    client.execute("DROP KEYSPACE IF EXISTS testing");
-    client.execute("CREATE KEYSPACE testing WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}");
-    client.execute("CREATE TABLE testing.people ( id timeuuid PRIMARY KEY, name text, active boolean, friends set<text> )");
+    client.execute("DROP KEYSPACE IF EXISTS testing").unwrap();
+    client.execute("CREATE KEYSPACE testing WITH replication = {'class': 'SimpleStrategy', 'replication_factor': '1'}").unwrap();
+    client.execute("CREATE TABLE testing.people ( id timeuuid PRIMARY KEY, name text, active boolean, friends set<text> )").unwrap();
 
-    client.execute("INSERT INTO testing.people (id, name, active, friends) VALUES (3cceb492-1c19-11e5-92d8-28cfe91ca1e9, 'John', false, {'Sam', 'Larry'})");
+    client.execute("INSERT INTO testing.people (id, name, active, friends) VALUES (3cceb492-1c19-11e5-92d8-28cfe91ca1e9, 'John', false, {'Sam', 'Larry'})").unwrap();
 
-    let result = client.query("SELECT * FROM testing.people");
+    let result = client.query("SELECT * FROM testing.people").unwrap();
     assert_eq!(result.rows.len(), 1);
 
     let ref row = result.rows[0];

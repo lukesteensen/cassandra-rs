@@ -1,15 +1,19 @@
+use std::result;
 use std::collections::HashMap;
 use std::io::{Read, Write, Cursor};
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
+use errors::MyError;
 use types::{CQLType, FromCQL};
 
+pub type Result<T> = result::Result<T, MyError>;
+
 pub trait ToWire {
-    fn encode<T: Write>(&self, buffer: &mut T);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
 }
 
 pub trait FromWire {
-    fn decode<T: Read>(buffer: &mut T) -> Self;
+    fn decode<T: Read>(buffer: &mut T) -> Result<Self>;
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -22,32 +26,33 @@ pub struct Header {
 }
 
 impl ToWire for Header {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        self.version.encode(buffer);
-        self.flags.encode(buffer);
-        buffer.write_u16::<BigEndian>(self.stream).unwrap();
-        self.opcode.encode(buffer);
-        buffer.write_u32::<BigEndian>(self.length).unwrap();
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try!(self.version.encode(buffer));
+        try!(self.flags.encode(buffer));
+        try!(buffer.write_u16::<BigEndian>(self.stream));
+        try!(self.opcode.encode(buffer));
+        try!(buffer.write_u32::<BigEndian>(self.length));
+        Ok(())
     }
 }
 
 impl FromWire for Header {
-    fn decode<T: Read>(buffer: &mut T) -> Header {
+    fn decode<T: Read>(buffer: &mut T) -> Result<Header> {
         let header = Header {
-            version: Version::decode(buffer),
-            flags: Flags::decode(buffer),
-            stream: buffer.read_u16::<BigEndian>().unwrap(),
-            opcode: Opcode::decode(buffer),
-            length: buffer.read_u32::<BigEndian>().unwrap(),
+            version: try!(Version::decode(buffer)),
+            flags: try!(Flags::decode(buffer)),
+            stream: try!(buffer.read_u16::<BigEndian>()),
+            opcode: try!(Opcode::decode(buffer)),
+            length: try!(buffer.read_u32::<BigEndian>()),
         };
 
         match header.opcode {
             Opcode::Error => {
-                let code = buffer.read_u32::<BigEndian>().unwrap();
-                let message = String::decode(buffer);
-                panic!("Error 0x{:04X}: {}", code, message);
+                let code = try!(buffer.read_u32::<BigEndian>());
+                let message = try!(String::decode(buffer));
+                Err(MyError::Protocol(format!("Error 0x{:04X}: {}", code, message)))
             },
-            _ => header,
+            _ => Ok(header),
         }
     }
 }
@@ -59,21 +64,22 @@ pub enum Version {
 }
 
 impl ToWire for Version {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        buffer.write_u8(match *self {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try!(buffer.write_u8(match *self {
             Version::Request => 0x03,
             Version::Response => 0x83,
-        }).unwrap();
+        }));
+        Ok(())
     }
 }
 
 impl FromWire for Version {
-    fn decode<T: Read>(buffer: &mut T) -> Version {
-        let version = buffer.read_u8().unwrap();
+    fn decode<T: Read>(buffer: &mut T) -> Result<Version> {
+        let version = try!(buffer.read_u8());
         match version {
-            0x03 => Version::Request,
-            0x83 => Version::Response,
-            _ => panic!("unknown version header: {:02x}"),
+            0x03 => Ok(Version::Request),
+            0x83 => Ok(Version::Response),
+            _ => Err(MyError::Protocol(format!("unknown version header: {:02x}", version))),
         }
     }
 }
@@ -91,20 +97,21 @@ impl Flags {
 }
 
 impl ToWire for Flags {
-    fn encode<T: Write>(&self, buffer: &mut T) {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let compression = if self.compression { 0x01 } else { 0x00 };
         let tracing = if self.tracing { 0x02 } else { 0x00 };
-        buffer.write_u8(compression | tracing).unwrap();
+        try!(buffer.write_u8(compression | tracing));
+        Ok(())
     }
 }
 
 impl FromWire for Flags {
-    fn decode<T: Read>(buffer: &mut T) -> Flags {
-        let flags = buffer.read_u8().unwrap();
-        Flags {
+    fn decode<T: Read>(buffer: &mut T) -> Result<Flags> {
+        let flags = try!(buffer.read_u8());
+        Ok(Flags {
             compression: (flags & 0x01) > 0,
             tracing: (flags & 0x02) > 0,
-        }
+        })
     }
 }
 
@@ -118,24 +125,25 @@ macro_rules! opcodes {
         }
 
         impl ToWire for Opcode {
-            fn encode<T: Write>(&self, buffer: &mut T) {
+            fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>{
                 let val = match *self {
                     $(
                         Opcode::$var => $val,
                      )*
                 };
-                buffer.write_u8(val).unwrap();
+                try!(buffer.write_u8(val));
+                Ok(())
             }
         }
 
         impl FromWire for Opcode {
-            fn decode<T: Read>(buffer: &mut T) -> Opcode {
-                let opcode = buffer.read_u8().unwrap();
+            fn decode<T: Read>(buffer: &mut T) -> Result<Opcode> {
+                let opcode = try!(buffer.read_u8());
                 match opcode {
                     $(
-                        $val => Opcode::$var,
+                        $val => Ok(Opcode::$var),
                      )*
-                    _ => panic!("Unknown opcode: {:02x}", opcode),
+                    _ => Err(MyError::Protocol(format!("Unknown opcode: {:02x}", opcode))),
                 }
             }
         }
@@ -164,35 +172,36 @@ opcodes!(
 pub type StringMultiMap = HashMap<String, Vec<String>>;
 
 impl FromWire for StringMultiMap {
-    fn decode<T: Read>(buffer: &mut T) -> StringMultiMap {
+    fn decode<T: Read>(buffer: &mut T) -> Result<StringMultiMap> {
         let mut map = HashMap::new();
 
-        let key_count = buffer.read_u16::<BigEndian>().unwrap();
+        let key_count = try!(buffer.read_u16::<BigEndian>());
         for _ in 0..key_count {
-            let key = String::decode(buffer);
-            let val_count = buffer.read_u16::<BigEndian>().unwrap();
+            let key = try!(String::decode(buffer));
+            let val_count = try!(buffer.read_u16::<BigEndian>());
             let mut vec = Vec::with_capacity(val_count as usize);
             for _ in 0..val_count {
-                vec.push(String::decode(buffer));
+                vec.push(try!(String::decode(buffer)));
             }
             map.insert(key, vec);
         }
-        map
+        Ok(map)
     }
 }
 
 impl<'a> ToWire for &'a str {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
-        buffer.write_all(self.as_bytes()).unwrap();
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try!(buffer.write_u16::<BigEndian>(self.len() as u16));
+        try!(buffer.write_all(self.as_bytes()));
+        Ok(())
     }
 }
 
 impl FromWire for String {
-    fn decode<T: Read>(buffer: &mut T) -> String {
-        let len = buffer.read_u16::<BigEndian>().unwrap();
-        let byte_vec = buffer.read_exact(len as usize).unwrap();
-        String::from_utf8(byte_vec).unwrap()
+    fn decode<T: Read>(buffer: &mut T) -> Result<String> {
+        let len = try!(buffer.read_u16::<BigEndian>());
+        let byte_vec = try!(buffer.read_exact(len as usize));
+        String::from_utf8(byte_vec).map_err(|e| MyError::Protocol(format!("{}", e)))
     }
 }
 
@@ -215,20 +224,21 @@ impl OptionsRequest {
 }
 
 impl ToWire for OptionsRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        self.header.encode(buffer)
     }
 }
 
 type StringMap<'a> = HashMap<&'a str, &'a str>;
 
 impl<'a> ToWire for StringMap<'a> {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        buffer.write_u16::<BigEndian>(self.len() as u16).unwrap();
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try!(buffer.write_u16::<BigEndian>(self.len() as u16));
         for (key, val) in self.iter() {
-            key.encode(buffer);
-            val.encode(buffer);
+            try!(key.encode(buffer));
+            try!(val.encode(buffer));
         }
+        Ok(())
     }
 }
 
@@ -242,7 +252,7 @@ impl StartupRequest {
         let mut options = HashMap::new();
         options.insert("CQL_VERSION", cql_version);
         let mut body = Vec::new();
-        options.encode(&mut body);
+        options.encode(&mut body).unwrap();
         StartupRequest {
             header: Header {
                 version: Version::Request,
@@ -257,9 +267,10 @@ impl StartupRequest {
 }
 
 impl ToWire for StartupRequest {
-    fn encode<T: Write>(&self, buffer: &mut T) {
-        self.header.encode(buffer);
-        buffer.write(self.body.as_ref()).unwrap();
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
+        try!(self.header.encode(buffer));
+        try!(buffer.write(self.body.as_ref()));
+        Ok(())
     }
 }
 
@@ -288,16 +299,17 @@ impl<'a> QueryRequest<'a> {
 }
 
 impl<'a> ToWire for QueryRequest<'a> {
-    fn encode<T: Write>(&self, buffer: &mut T) {
+    fn encode<T: Write>(&self, buffer: &mut T) -> Result<()> {
         let mut body = Vec::new();
         let mut header = self.header;
-        body.write_u32::<BigEndian>(self.query.len() as u32).unwrap();
-        body.write_all(self.query.as_bytes()).unwrap();
-        body.write_u16::<BigEndian>(self.consistency).unwrap();
-        body.write_u8(self.flags).unwrap();
+        try!(body.write_u32::<BigEndian>(self.query.len() as u32));
+        try!(body.write_all(self.query.as_bytes()));
+        try!(body.write_u16::<BigEndian>(self.consistency));
+        try!(body.write_u8(self.flags));
         header.length = body.len() as u32;
-        header.encode(buffer);
-        buffer.write_all(body.as_ref()).unwrap();
+        try!(header.encode(buffer));
+        try!(buffer.write_all(body.as_ref()));
+        Ok(())
     }
 }
 
@@ -311,23 +323,23 @@ pub struct QueryResult {
 }
 
 impl FromWire for QueryResult {
-    fn decode<T: Read>(buffer: &mut T) -> QueryResult {
-        let header = Header::decode(buffer);
-        let mut body = Cursor::new(buffer.read_exact(header.length as usize).unwrap());
-        let kind = ResultKind::decode(&mut body);
+    fn decode<T: Read>(buffer: &mut T) -> Result<QueryResult> {
+        let header = try!(Header::decode(buffer));
+        let mut body = Cursor::new(try!(buffer.read_exact(header.length as usize)));
+        let kind = try!(ResultKind::decode(&mut body));
         if kind != ResultKind::Rows {
             panic!("Parsing for result of kind {:?} is unimplemented");
         };
-        let flags = ResultFlags::decode(&mut body);
+        let flags = try!(ResultFlags::decode(&mut body));
         if flags.has_more_pages {
             println!("warning: has_more_pages set on result but paging is unimplemented");
         };
         if flags.no_metadata {
-            panic!("Parsing results with no_metadata set is unimplemented");
+            return Err(MyError::Protocol("Parsing results with no_metadata set is unimplemented".to_string()));
         };
-        let column_count = body.read_i32::<BigEndian>().unwrap();
+        let column_count = try!(body.read_i32::<BigEndian>());
         let global_table_spec = if flags.global_table_spec {
-            Some(TableSpec::decode(&mut body))
+            Some(try!(TableSpec::decode(&mut body)))
         } else {
             None
         };
@@ -336,32 +348,32 @@ impl FromWire for QueryResult {
             let table_spec = if flags.global_table_spec {
                 global_table_spec.clone().unwrap()
             } else {
-                TableSpec::decode(&mut body)
+                try!(TableSpec::decode(&mut body))
             };
             let spec = ColumnSpec {
                 table_spec: table_spec,
-                name: String::decode(&mut body),
-                datatype: CQLType::decode(&mut body)
+                name: try!(String::decode(&mut body)),
+                datatype: try!(CQLType::decode(&mut body))
             };
             column_specs.push(spec);
         };
-        let row_count = body.read_i32::<BigEndian>().unwrap();
+        let row_count = try!(body.read_i32::<BigEndian>());
         let mut rows = Vec::with_capacity(row_count as usize);
         for _ in 0..row_count {
             let mut columns = HashMap::with_capacity(column_count as usize);
             for column_spec in column_specs.iter() {
-                let size = body.read_i32::<BigEndian>().unwrap() as usize;
-                columns.insert(column_spec.name.clone(), body.read_exact(size).unwrap());
+                let size = try!(body.read_i32::<BigEndian>()) as usize;
+                columns.insert(column_spec.name.clone(), try!(body.read_exact(size)));
             }
             rows.push(Row { columns: columns });
         };
-        QueryResult {
+        Ok(QueryResult {
             header: header,
             kind: kind,
             flags: flags,
             table_spec: global_table_spec,
             rows: rows,
-        }
+        })
     }
 }
 
@@ -387,15 +399,15 @@ enum ResultKind {
 }
 
 impl FromWire for ResultKind {
-    fn decode<T: Read>(buffer: &mut T) -> ResultKind {
-        let kind = buffer.read_i32::<BigEndian>().unwrap();
+    fn decode<T: Read>(buffer: &mut T) -> Result<ResultKind> {
+        let kind = try!(buffer.read_i32::<BigEndian>());
         match kind {
-            0x0001 => ResultKind::Void,
-            0x0002 => ResultKind::Rows,
-            0x0003 => ResultKind::SetKeyspace,
-            0x0004 => ResultKind::Prepared,
-            0x0005 => ResultKind::SchemaChange,
-            _ => panic!("Unknown result kind: 0x{:04X}", kind),
+            0x0001 => Ok(ResultKind::Void),
+            0x0002 => Ok(ResultKind::Rows),
+            0x0003 => Ok(ResultKind::SetKeyspace),
+            0x0004 => Ok(ResultKind::Prepared),
+            0x0005 => Ok(ResultKind::SchemaChange),
+            _ => Err(MyError::Protocol(format!("Unknown result kind: 0x{:04X}", kind))),
         }
     }
 }
@@ -408,13 +420,13 @@ struct ResultFlags {
 }
 
 impl FromWire for ResultFlags {
-    fn decode<T: Read>(buffer: &mut T) -> ResultFlags {
-        let flags = buffer.read_i32::<BigEndian>().unwrap();
-        ResultFlags {
+    fn decode<T: Read>(buffer: &mut T) -> Result<ResultFlags> {
+        let flags = try!(buffer.read_i32::<BigEndian>());
+        Ok(ResultFlags {
             global_table_spec: (flags & 0x01) > 0,
             has_more_pages: (flags & 0x02) > 0,
             no_metadata: (flags & 0x04) > 0,
-        }
+        })
     }
 }
 
@@ -425,11 +437,11 @@ struct TableSpec {
 }
 
 impl FromWire for TableSpec {
-    fn decode<T: Read>(buffer: &mut T) -> TableSpec {
-        TableSpec {
-            keyspace: String::decode(buffer),
-            table: String::decode(buffer),
-        }
+    fn decode<T: Read>(buffer: &mut T) -> Result<TableSpec> {
+        Ok(TableSpec {
+            keyspace: try!(String::decode(buffer)),
+            table: try!(String::decode(buffer)),
+        })
     }
 }
 
@@ -441,50 +453,50 @@ struct ColumnSpec {
 }
 
 impl FromWire for CQLType {
-    fn decode<T: Read>(buffer: &mut T) -> CQLType {
-        let option = buffer.read_u16::<BigEndian>().unwrap();
+    fn decode<T: Read>(buffer: &mut T) -> Result<CQLType> {
+        let option = try!(buffer.read_u16::<BigEndian>());
         match option {
             0x0000 => {
-                String::decode(buffer);
-                CQLType::Custom
+                try!(String::decode(buffer));
+                Ok(CQLType::Custom)
             },
-            0x0001 => CQLType::Ascii,
-            0x0002 => CQLType::Bigint,
-            0x0003 => CQLType::Blob,
-            0x0004 => CQLType::Boolean,
-            0x0005 => CQLType::Counter,
-            0x0006 => CQLType::Decimal,
-            0x0007 => CQLType::Double,
-            0x0008 => CQLType::Float,
-            0x0009 => CQLType::Int,
-            0x000B => CQLType::Timestamp,
-            0x000C => CQLType::Uuid,
-            0x000D => CQLType::Varchar,
-            0x000E => CQLType::Varint,
-            0x000F => CQLType::Timeuuid,
-            0x0010 => CQLType::Inet,
+            0x0001 => Ok(CQLType::Ascii),
+            0x0002 => Ok(CQLType::Bigint),
+            0x0003 => Ok(CQLType::Blob),
+            0x0004 => Ok(CQLType::Boolean),
+            0x0005 => Ok(CQLType::Counter),
+            0x0006 => Ok(CQLType::Decimal),
+            0x0007 => Ok(CQLType::Double),
+            0x0008 => Ok(CQLType::Float),
+            0x0009 => Ok(CQLType::Int),
+            0x000B => Ok(CQLType::Timestamp),
+            0x000C => Ok(CQLType::Uuid),
+            0x000D => Ok(CQLType::Varchar),
+            0x000E => Ok(CQLType::Varint),
+            0x000F => Ok(CQLType::Timeuuid),
+            0x0010 => Ok(CQLType::Inet),
             0x0020 => {
-                CQLType::decode(buffer);
-                CQLType::List
+                try!(CQLType::decode(buffer));
+                Ok(CQLType::List)
             },
             0x0021 => {
-                CQLType::decode(buffer);
-                CQLType::decode(buffer);
-                CQLType::Map
+                try!(CQLType::decode(buffer));
+                try!(CQLType::decode(buffer));
+                Ok(CQLType::Map)
             },
             0x0022 => {
-                CQLType::decode(buffer);
-                CQLType::Set
+                try!(CQLType::decode(buffer));
+                Ok(CQLType::Set)
             },
             0x0030 => {
-                panic!("UDTs are not currently supported");
+                Err(MyError::Protocol("UDTs are not currently supported".to_string()))
                 // CQLType::UDT
             },
             0x0031 => {
-                panic!("Tuples are not currently supported");
+                Err(MyError::Protocol("Tuples are not currently supported".to_string()))
                 // CQLType::Tuple
             },
-            _ => panic!("unknown type identifier: 0x{:04X}", option),
+            _ => Err(MyError::Protocol(format!("unknown type identifier: 0x{:04X}", option))),
         }
     }
 }
@@ -496,16 +508,16 @@ pub struct NonRowResult {
 }
 
 impl FromWire for NonRowResult {
-    fn decode<T: Read>(buffer: &mut T) -> NonRowResult {
-        let header = Header::decode(buffer);
-        let mut body = Cursor::new(buffer.read_exact(header.length as usize).unwrap());
-        let kind = ResultKind::decode(&mut body);
+    fn decode<T: Read>(buffer: &mut T) -> Result<NonRowResult> {
+        let header = try!(Header::decode(buffer));
+        let mut body = Cursor::new(try!(buffer.read_exact(header.length as usize)));
+        let kind = try!(ResultKind::decode(&mut body));
         if ![ResultKind::SchemaChange, ResultKind::Void].contains(&kind) {
-            panic!("Unexpected result kind {:?}", kind);
+            return Err(MyError::Protocol(format!("Unexpected result kind {:?}", kind)))
         };
-        NonRowResult {
+        Ok(NonRowResult {
             header: header,
             kind: kind,
-        }
+        })
     }
 }

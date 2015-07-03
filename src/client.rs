@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use podio::ReadPodExt;
 
 use protocol::*;
+use errors::MyError;
 
 pub struct Client {
     conn: TcpStream,
@@ -18,34 +19,38 @@ impl Client {
         }
     }
 
-    pub fn initialize(&mut self) {
-        let options = self.get_options();
+    pub fn initialize(&mut self) -> Result<()> {
+        let options = try!(self.get_options());
         let cql_version = &options["CQL_VERSION"][0];
         let req = StartupRequest::new(cql_version);
-        req.encode(&mut self.conn);
-        let ready = Header::decode(&mut self.conn);
+        try!(req.encode(&mut self.conn));
+        let ready = try!(Header::decode(&mut self.conn));
         println!("Connection initialized with CQL version {}", cql_version);
         assert_eq!(ready.opcode, Opcode::Ready);
+        match ready.opcode {
+            Opcode::Ready => Ok(()),
+            _ => Err(MyError::Protocol(format!("Expected Ready opcode, got {:?}", ready.opcode)))
+        }
     }
 
-    pub fn query(&mut self, query: &str) -> QueryResult {
+    pub fn query(&mut self, query: &str) -> Result<QueryResult> {
         let req = QueryRequest::new(query);
-        req.encode(&mut self.conn);
+        try!(req.encode(&mut self.conn));
         QueryResult::decode(&mut self.conn)
     }
 
-    pub fn execute(&mut self, statement: &str) {
+    pub fn execute(&mut self, statement: &str) -> Result<()> {
         let statement = QueryRequest::new(statement);
-        statement.encode(&mut self.conn);
-        NonRowResult::decode(&mut self.conn);
+        try!(statement.encode(&mut self.conn));
+        NonRowResult::decode(&mut self.conn).map(|_| ())
     }
 
-    fn get_options(&mut self) -> HashMap<String, Vec<String>> {
+    fn get_options(&mut self) -> Result<HashMap<String, Vec<String>>> {
         let req = OptionsRequest::new();
-        req.encode(&mut self.conn);
+        try!(req.encode(&mut self.conn));
 
-        let header = Header::decode(&mut self.conn);
-        let mut body = Cursor::new(self.conn.read_exact(header.length as usize).unwrap());
+        let header = try!(Header::decode(&mut self.conn));
+        let mut body = Cursor::new(try!(self.conn.read_exact(header.length as usize)));
         StringMultiMap::decode(&mut body)
     }
 }
