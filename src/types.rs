@@ -1,8 +1,8 @@
 use uuid::Uuid;
-use std::io::Cursor;
+use std::io::{Cursor, Write};
 use std::hash::Hash;
 use std::collections::HashSet;
-use podio::{BigEndian, ReadPodExt};
+use podio::{BigEndian, ReadPodExt, WritePodExt};
 
 #[derive(Debug)]
 pub enum CQLType {
@@ -49,6 +49,12 @@ impl<'a> ToCQL for &'a str {
     }
 }
 
+impl ToCQL for String {
+    fn serialize(&self) -> Vec<u8> {
+        self.clone().into_bytes()
+    }
+}
+
 impl FromCQL for Uuid {
     fn parse(buf: Vec<u8>) -> Uuid {
         Uuid::from_bytes(buf.as_ref()).unwrap()
@@ -89,5 +95,18 @@ impl<T: FromCQL + PartialEq + Eq + Hash> FromCQL for HashSet<T> {
             set.insert(T::parse(bytes.read_exact(len as usize).unwrap()));
         }
         set
+    }
+}
+
+impl<T: ToCQL + PartialEq + Eq + Hash> ToCQL for HashSet<T> {
+    fn serialize(&self) -> Vec<u8> {
+        let mut ret = Vec::new();
+        ret.write_i32::<BigEndian>(self.len() as i32).unwrap();
+        for item in self.iter() {
+            let bytes = ToCQL::serialize(item);
+            ret.write_i32::<BigEndian>(bytes.len() as i32).unwrap();
+            ret.write_all(&bytes).unwrap();
+        }
+        ret
     }
 }
