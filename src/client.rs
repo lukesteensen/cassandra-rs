@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use podio::ReadPodExt;
 
 use protocol::*;
+use types::ToCQL;
 use errors::MyError;
 
 pub struct Client {
@@ -33,14 +34,14 @@ impl Client {
         }
     }
 
-    pub fn query(&mut self, query: &str) -> Result<QueryResult> {
-        let req = QueryRequest::new(query);
+    pub fn query(&mut self, query: &str, params: &[&ToCQL]) -> Result<QueryResult> {
+        let req = QueryRequest::new(query, params);
         try!(req.encode(&mut self.conn));
         QueryResult::decode(&mut self.conn)
     }
 
     pub fn execute(&mut self, statement: &str) -> Result<()> {
-        let statement = QueryRequest::new(statement);
+        let statement = QueryRequest::new(statement, &[]);
         try!(statement.encode(&mut self.conn));
         NonRowResult::decode(&mut self.conn).map(|_| ())
     }

@@ -15,7 +15,8 @@ fn main() {
 
     client.execute("INSERT INTO testing.people (id, name, active, friends) VALUES (3cceb492-1c19-11e5-92d8-28cfe91ca1e9, 'John', false, {'Sam', 'Larry'})").unwrap();
 
-    let result = client.query("SELECT * FROM testing.people").unwrap();
+    let param = Uuid::parse_str("3cceb492-1c19-11e5-92d8-28cfe91ca1e9").unwrap();
+    let result = client.query("SELECT * FROM testing.people where id = ?", &[&param]).unwrap();
     assert_eq!(result.rows.len(), 1);
 
     let ref row = result.rows[0];

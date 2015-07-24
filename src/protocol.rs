@@ -4,7 +4,7 @@ use std::io::{Read, Write, Cursor};
 use podio::{BigEndian, ReadPodExt, WritePodExt};
 
 use errors::MyError;
-use types::{CQLType, FromCQL};
+use types::{CQLType, FromCQL, ToCQL};
 
 pub type Result<T> = result::Result<T, MyError>;
 
@@ -279,10 +279,15 @@ pub struct QueryRequest<'a> {
     query: &'a str,
     consistency: u16,
     flags: u8,
+    params: &'a [&'a ToCQL],
 }
 
 impl<'a> QueryRequest<'a> {
-    pub fn new(query: &str) -> QueryRequest {
+    pub fn new(query: &'a str, params: &'a [&'a ToCQL]) -> QueryRequest<'a> {
+        let flags = match params.len() {
+            0 => 0x00,
+            _ => 0x01,
+        };
         QueryRequest {
             header: Header {
                 version: Version::Request,
@@ -293,7 +298,8 @@ impl<'a> QueryRequest<'a> {
             },
             query: query,
             consistency: 0x0001,
-            flags: 0x00,
+            flags: flags,
+            params: params,
         }
     }
 }
@@ -306,6 +312,12 @@ impl<'a> ToWire for QueryRequest<'a> {
         try!(body.write_all(self.query.as_bytes()));
         try!(body.write_u16::<BigEndian>(self.consistency));
         try!(body.write_u8(self.flags));
+        if self.params.len() > 0 {
+            try!(body.write_u16::<BigEndian>(self.params.len() as u16));
+            for p in self.params {
+                try!(body.write_all(&p.serialize()));
+            }
+        }
         header.length = body.len() as u32;
         try!(header.encode(buffer));
         try!(buffer.write_all(body.as_ref()));
