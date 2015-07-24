@@ -2,7 +2,7 @@ use uuid::Uuid;
 use std::io::Cursor;
 use std::hash::Hash;
 use std::collections::HashSet;
-use podio::{BigEndian, ReadPodExt, WritePodExt};
+use podio::{BigEndian, ReadPodExt};
 
 #[derive(Debug)]
 pub enum CQLType {
@@ -45,12 +45,7 @@ impl FromCQL for String {
 
 impl<'a> ToCQL for &'a str {
     fn serialize(&self) -> Vec<u8> {
-        let mut serialized = Vec::new();
-        let bytes = self.as_bytes().to_owned();
-        let len = bytes.len() as i32;
-        serialized.write_i32::<BigEndian>(len).unwrap();
-        serialized.extend(bytes);
-        serialized
+        self.as_bytes().to_owned()
     }
 }
 
@@ -62,12 +57,7 @@ impl FromCQL for Uuid {
 
 impl ToCQL for Uuid {
     fn serialize(&self) -> Vec<u8> {
-        let mut serialized = Vec::new();
-        let bytes = self.as_bytes().to_owned();
-        let len = bytes.len() as i32;
-        serialized.write_i32::<BigEndian>(len).unwrap();
-        serialized.extend(bytes);
-        serialized
+        self.as_bytes().to_owned()
     }
 }
 
@@ -82,14 +72,10 @@ impl FromCQL for bool {
 
 impl ToCQL for bool {
     fn serialize(&self) -> Vec<u8> {
-        let mut serialized = Vec::new();
-        serialized.write_i32::<BigEndian>(1).unwrap();
-        println!("{:?}", serialized);
         match *self {
-            true => serialized.write_u8(1).unwrap(),
-            false => serialized.write_u8(0).unwrap(),
+            true => vec![1],
+            false => vec![0],
         }
-        serialized
     }
 }
 

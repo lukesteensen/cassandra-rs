@@ -315,7 +315,9 @@ impl<'a> ToWire for QueryRequest<'a> {
         if self.params.len() > 0 {
             try!(body.write_u16::<BigEndian>(self.params.len() as u16));
             for p in self.params {
-                try!(body.write_all(&p.serialize()));
+                let bytes = p.serialize();
+                try!(body.write_i32::<BigEndian>(bytes.len() as i32));
+                try!(body.write_all(&bytes));
             }
         }
         header.length = body.len() as u32;
