@@ -43,6 +43,17 @@ impl FromCQL for String {
     }
 }
 
+impl<'a> ToCQL for &'a str {
+    fn serialize(&self) -> Vec<u8> {
+        let mut serialized = Vec::new();
+        let bytes = self.as_bytes().to_owned();
+        let len = bytes.len() as i32;
+        serialized.write_i32::<BigEndian>(len).unwrap();
+        serialized.extend(bytes);
+        serialized
+    }
+}
+
 impl FromCQL for Uuid {
     fn parse(buf: Vec<u8>) -> Uuid {
         Uuid::from_bytes(buf.as_ref()).unwrap()

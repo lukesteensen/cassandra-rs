@@ -40,8 +40,8 @@ impl Client {
         QueryResult::decode(&mut self.conn)
     }
 
-    pub fn execute(&mut self, statement: &str) -> Result<()> {
-        let statement = QueryRequest::new(statement, &[]);
+    pub fn execute(&mut self, statement: &str, params: &[&ToCQL]) -> Result<()> {
+        let statement = QueryRequest::new(statement, params);
         try!(statement.encode(&mut self.conn));
         NonRowResult::decode(&mut self.conn).map(|_| ())
     }
