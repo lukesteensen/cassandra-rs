@@ -376,8 +376,13 @@ impl FromWire for QueryResult {
         for _ in 0..row_count {
             let mut columns = HashMap::with_capacity(column_count as usize);
             for column_spec in column_specs.iter() {
-                let size = try!(body.read_i32::<BigEndian>()) as usize;
-                columns.insert(column_spec.name.clone(), try!(body.read_exact(size)));
+                let size = try!(body.read_i32::<BigEndian>());
+                if size > 0 {
+                    columns.insert(column_spec.name.clone(), try!(body.read_exact(size as usize)));
+                } else {
+                    // NULL or legacy "empty"
+                    columns.insert(column_spec.name.clone(), vec![]);
+                }
             }
             rows.push(Row { columns: columns });
         };
@@ -397,9 +402,13 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn get<T: FromCQL>(&self, col: &str) -> T {
+    pub fn get<T: FromCQL>(&self, col: &str) -> Option<T> {
         let bytes = self.columns.get(col).unwrap().clone();
-        T::parse(bytes)
+        if bytes.len() > 0 {
+            Some(T::parse(bytes))
+        } else {
+            None
+        }
     }
 }
 

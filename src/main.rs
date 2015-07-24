@@ -25,15 +25,15 @@ fn main() {
     let ref row = result.rows[0];
     assert_eq!(row.columns.len(), 4);
 
-    let returned_id: Uuid = row.get("id");
+    let returned_id: Uuid = row.get("id").unwrap();
     assert_eq!(id, returned_id);
 
-    let name: String = row.get("name");
+    let name: String = row.get("name").unwrap();
     assert_eq!(name, "John".to_string());
 
-    let active: bool = row.get("active");
+    let active: bool = row.get("active").unwrap();
     assert_eq!(active, false);
 
-    let returned_friends: HashSet<String> = row.get("friends");
+    let returned_friends: HashSet<String> = row.get("friends").unwrap();
     assert_eq!(friends, returned_friends);
 }
