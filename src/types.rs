@@ -43,15 +43,15 @@ impl FromCQL for String {
     }
 }
 
-impl<'a> ToCQL for &'a str {
-    fn serialize(&self) -> Vec<u8> {
-        self.as_bytes().to_owned()
-    }
-}
-
 impl ToCQL for String {
     fn serialize(&self) -> Vec<u8> {
         self.clone().into_bytes()
+    }
+}
+
+impl<'a> ToCQL for &'a str {
+    fn serialize(&self) -> Vec<u8> {
+        self.as_bytes().to_owned()
     }
 }
 
