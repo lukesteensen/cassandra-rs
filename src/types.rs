@@ -80,6 +80,19 @@ impl FromCQL for bool {
     }
 }
 
+impl ToCQL for bool {
+    fn serialize(&self) -> Vec<u8> {
+        let mut serialized = Vec::new();
+        serialized.write_i32::<BigEndian>(1).unwrap();
+        println!("{:?}", serialized);
+        match *self {
+            true => serialized.write_u8(1).unwrap(),
+            false => serialized.write_u8(0).unwrap(),
+        }
+        serialized
+    }
+}
+
 impl<T: FromCQL + PartialEq + Eq + Hash> FromCQL for HashSet<T> {
     fn parse(buf: Vec<u8>) -> HashSet<T> {
         let mut bytes = Cursor::new(buf);
