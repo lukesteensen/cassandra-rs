@@ -37,6 +37,21 @@ pub trait ToCQL {
     fn serialize(&self) -> Vec<u8>;
 }
 
+impl FromCQL for i32 {
+    fn parse(buf: Vec<u8>) -> Self {
+        assert_eq!(buf.len(), 4);
+        Cursor::new(buf).read_i32::<BigEndian>().unwrap()
+    }
+}
+
+impl ToCQL for i32 {
+    fn serialize(&self) -> Vec<u8> {
+        let mut ret = Vec::with_capacity(4);
+        ret.write_i32::<BigEndian>(*self).unwrap();
+        ret
+    }
+}
+
 impl FromCQL for String {
     fn parse(buf: Vec<u8>) -> String {
         String::from_utf8(buf).unwrap()
