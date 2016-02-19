@@ -6,4 +6,4 @@ authors = ["Luke Steensen <luke.steensen@gmail.com>"]
 
 [dependencies]
 uuid = "*"
-podio = "*"
+byteorder = { git = "https://github.com/lukesteensen/byteorder", branch = "read_exact" }

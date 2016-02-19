@@ -1,5 +1,5 @@
 extern crate uuid;
-extern crate podio;
+extern crate byteorder;
 
 pub mod client;
 pub mod protocol;

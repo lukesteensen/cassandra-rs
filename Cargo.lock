@@ -2,39 +2,39 @@
 name = "cassandra"
 version = "0.0.1"
 dependencies = [
- "podio 0.1.3 (registry+https://github.com/rust-lang/crates.io-index)",
- "uuid 0.1.17 (registry+https://github.com/rust-lang/crates.io-index)",
+ "byteorder 0.4.2 (git+https://github.com/lukesteensen/byteorder?branch=read_exact)",
+ "uuid 0.1.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
-name = "libc"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
+name = "byteorder"
+version = "0.4.2"
+source = "git+https://github.com/lukesteensen/byteorder?branch=read_exact#7a605768b98fbdbc00e700ea4d3707722e672ee2"
 
 [[package]]
-name = "podio"
-version = "0.1.3"
+name = "libc"
+version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "rand"
-version = "0.3.8"
+version = "0.3.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "libc 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libc 0.2.7 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "rustc-serialize"
-version = "0.3.15"
+version = "0.3.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "uuid"
-version = "0.1.17"
+version = "0.1.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 dependencies = [
- "rand 0.3.8 (registry+https://github.com/rust-lang/crates.io-index)",
- "rustc-serialize 0.3.15 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rand 0.3.14 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rustc-serialize 0.3.18 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 

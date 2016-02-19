@@ -1,18 +1,18 @@
 use std::result;
 use std::collections::HashMap;
 use std::io::{Read, Write, Cursor};
-use podio::{BigEndian, ReadPodExt, WritePodExt};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 use errors::MyError;
 use types::{CQLType, FromCQL, ToCQL};
 
 pub type Result<T> = result::Result<T, MyError>;
 
-pub trait ToWire {
+pub trait ToWire: Sized {
     fn encode<T: Write>(&self, buffer: &mut T) -> Result<()>;
 }
 
-pub trait FromWire {
+pub trait FromWire: Sized {
     fn decode<T: Read>(buffer: &mut T) -> Result<Self>;
 }
 
@@ -200,7 +200,8 @@ impl<'a> ToWire for &'a str {
 impl FromWire for String {
     fn decode<T: Read>(buffer: &mut T) -> Result<String> {
         let len = try!(buffer.read_u16::<BigEndian>());
-        let byte_vec = try!(buffer.read_exact(len as usize));
+        let mut byte_vec = vec![0; len as usize];
+        try!(buffer.read_exact(&mut byte_vec));
         String::from_utf8(byte_vec).map_err(|e| MyError::Protocol(format!("{}", e)))
     }
 }
@@ -339,7 +340,9 @@ pub struct QueryResult {
 impl FromWire for QueryResult {
     fn decode<T: Read>(buffer: &mut T) -> Result<QueryResult> {
         let header = try!(Header::decode(buffer));
-        let mut body = Cursor::new(try!(buffer.read_exact(header.length as usize)));
+        let mut body_bytes = vec![0; header.length as usize];
+        try!(buffer.read_exact(&mut body_bytes));
+        let mut body = Cursor::new(body_bytes);
         let kind = try!(ResultKind::decode(&mut body));
         if kind != ResultKind::Rows {
             panic!("Parsing for result of kind {:?} is unimplemented");
@@ -378,7 +381,9 @@ impl FromWire for QueryResult {
             for column_spec in column_specs.iter() {
                 let size = try!(body.read_i32::<BigEndian>());
                 if size > 0 {
-                    columns.insert(column_spec.name.clone(), try!(body.read_exact(size as usize)));
+                    let mut bytes = vec![0; size as usize];
+                    try!(body.read_exact(&mut bytes));
+                    columns.insert(column_spec.name.clone(), bytes);
                 } else {
                     // NULL or legacy "empty"
                     columns.insert(column_spec.name.clone(), vec![]);
@@ -533,7 +538,9 @@ pub struct NonRowResult {
 impl FromWire for NonRowResult {
     fn decode<T: Read>(buffer: &mut T) -> Result<NonRowResult> {
         let header = try!(Header::decode(buffer));
-        let mut body = Cursor::new(try!(buffer.read_exact(header.length as usize)));
+        let mut body_bytes = vec![0; header.length as usize];
+        try!(buffer.read_exact(&mut body_bytes));
+        let mut body = Cursor::new(body_bytes);
         let kind = try!(ResultKind::decode(&mut body));
         if ![ResultKind::SchemaChange, ResultKind::Void].contains(&kind) {
             return Err(MyError::Protocol(format!("Unexpected result kind {:?}", kind)))

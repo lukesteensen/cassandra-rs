@@ -1,8 +1,8 @@
 use uuid::Uuid;
-use std::io::{Cursor, Write};
 use std::hash::Hash;
 use std::collections::HashSet;
-use podio::{BigEndian, ReadPodExt, WritePodExt};
+use std::io::{Cursor, Read, Write};
+use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 
 #[derive(Debug)]
 pub enum CQLType {
@@ -92,7 +92,9 @@ impl<T: FromCQL + PartialEq + Eq + Hash> FromCQL for HashSet<T> {
         let count = bytes.read_i32::<BigEndian>().unwrap();
         for _ in 0..count {
             let len = bytes.read_i32::<BigEndian>().unwrap();
-            set.insert(T::parse(bytes.read_exact(len as usize).unwrap()));
+            let mut buf = vec![0; len as usize];
+            bytes.read_exact(&mut buf).unwrap();
+            set.insert(T::parse(buf));
         }
         set
     }

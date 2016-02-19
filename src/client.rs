@@ -1,9 +1,6 @@
-use std::io::Cursor;
-use std::net::TcpStream;
-use std::net::ToSocketAddrs;
+use std::io::{Cursor, Read};
 use std::collections::HashMap;
-
-use podio::ReadPodExt;
+use std::net::{TcpStream, ToSocketAddrs};
 
 use protocol::*;
 use types::ToCQL;
@@ -51,7 +48,9 @@ impl Client {
         try!(req.encode(&mut self.conn));
 
         let header = try!(Header::decode(&mut self.conn));
-        let mut body = Cursor::new(try!(self.conn.read_exact(header.length as usize)));
+        let mut bytes = vec![0; header.length as usize];
+        try!(self.conn.read_exact(&mut bytes));
+        let mut body = Cursor::new(bytes);
         StringMultiMap::decode(&mut body)
     }
 }
